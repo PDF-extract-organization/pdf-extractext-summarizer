@@ -35,11 +35,10 @@ async def test_el_prompt_de_usuario_incluye_el_texto(service, fake_provider):
 
 
 async def test_trunca_el_texto_al_maximo_configurado(service, fake_provider):
-    await service.summarize("a" * 100 + "b" * 50)
+    await service.summarize("a" * 100 + "z" * 50)
 
     _, user_prompt = fake_provider.calls[0]
-    assert "a" * 100 in user_prompt
-    assert "b" not in user_prompt
+    assert user_prompt.endswith("\n\n" + "a" * 100)
 
 
 async def test_el_prompt_de_sistema_pide_responder_solo_con_el_resumen():
