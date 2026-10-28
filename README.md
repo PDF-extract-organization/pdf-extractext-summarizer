@@ -52,7 +52,7 @@ Los reintentos ante 429 y 5xx aún no están implementados (#3).
 | `OPENROUTER_API_URL` | `https://openrouter.ai/api/v1` | Base de la API |
 | `OPENROUTER_MODEL` | `openrouter/free` | Modelo |
 | `MAX_PROMPT_CHARS` | `12000` | Truncado del texto |
-| `MAX_TOKENS` | `1024` | Límite de la respuesta |
+| `MAX_TOKENS` | `5000` | Límite de la respuesta, razonamiento del modelo incluido |
 | `TEMPERATURE` | `0.3` | Temperatura |
 | `REQUEST_TIMEOUT_SECONDS` | `60` | Timeout hacia OpenRouter |
 

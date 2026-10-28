@@ -9,7 +9,8 @@ class Settings(BaseSettings):
     openrouter_model: str = "openrouter/free"
 
     max_prompt_chars: int = 12000
-    max_tokens: int = 1024
+    # Los modelos de razonamiento gastan parte del límite pensando antes de responder
+    max_tokens: int = 5000
     temperature: float = 0.3
     request_timeout_seconds: float = 60.0
 
