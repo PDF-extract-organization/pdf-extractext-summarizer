@@ -13,11 +13,12 @@ from app.application.services.summary_service import SummaryService
 from app.dependencies import get_summary_service
 from app.main import app
 from app.presentation.routers.summarizer import MISSING_API_KEY_DETAIL
-from tests.conftest import FakeAIProvider
+from tests.conftest import DEFAULTS, FakeAIProvider, FakeParametersSource
 
 
-def client_con(provider: FakeAIProvider) -> TestClient:
-    app.dependency_overrides[get_summary_service] = lambda: SummaryService(provider, 100)
+def client_con(provider: FakeAIProvider, source: FakeParametersSource | None = None) -> TestClient:
+    service = SummaryService(provider, DEFAULTS, source)
+    app.dependency_overrides[get_summary_service] = lambda: service
     return TestClient(app)
 
 
@@ -37,7 +38,7 @@ def test_summarize_devuelve_resumen_modelo_y_tokens():
     assert response.status_code == 200
     assert response.json() == {
         "summary": "Resumen de prueba",
-        "model": "modelo/fake",
+        "model": "modelo/env",
         "tokens_used": 42,
     }
 
@@ -100,3 +101,53 @@ def test_health_degraded_si_el_proveedor_no_responde():
 
     assert response.status_code == 200
     assert response.json() == {"status": "degraded", "service": "summarizer"}
+
+
+# --- GET /parameters ---
+
+
+def test_parameters_sin_config_muestra_los_del_env():
+    response = client_con(FakeAIProvider()).get("/parameters")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "model": "modelo/env",
+        "max_tokens": 1000,
+        "temperature": 0.3,
+        "max_prompt_chars": 100,
+        "config_status": "not_configured",
+    }
+
+
+def test_parameters_muestra_los_valores_de_config_en_cuanto_cambian():
+    source = FakeParametersSource({"max_tokens": "5000"})
+    client = client_con(FakeAIProvider(), source)
+
+    first = client.get("/parameters").json()
+    source.overrides = {"max_tokens": "6000", "model": "modelo/consul"}
+    second = client.get("/parameters").json()
+
+    assert (first["max_tokens"], first["config_status"]) == (5000, "ok")
+    assert (second["max_tokens"], second["model"]) == (6000, "modelo/consul")
+
+
+def test_parameters_con_config_caido_muestra_el_env_y_unavailable():
+    body = client_con(FakeAIProvider(), FakeParametersSource(None)).get("/parameters").json()
+
+    assert body["max_tokens"] == DEFAULTS.max_tokens
+    assert body["config_status"] == "unavailable"
+
+
+def test_parameters_nunca_expone_la_api_key():
+    body = client_con(FakeAIProvider()).get("/parameters").json()
+
+    assert not any("key" in name for name in body)
+
+
+def test_el_resumen_usa_los_parametros_de_config():
+    provider = FakeAIProvider()
+
+    response = resumir(client_con(provider, FakeParametersSource({"model": "modelo/consul"})))
+
+    assert response.json()["model"] == "modelo/consul"
+    assert provider.calls[0].model == "modelo/consul"

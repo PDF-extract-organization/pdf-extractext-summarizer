@@ -9,8 +9,14 @@ class Settings(BaseSettings):
     openrouter_model: str = "openrouter/free"
 
     max_prompt_chars: int = 12000
-    max_tokens: int = 1024
+    # Los modelos de razonamiento gastan parte del límite pensando antes de responder
+    max_tokens: int = 5000
     temperature: float = 0.3
     request_timeout_seconds: float = 60.0
+
+    # Servicio config (Consul por detrás). Vacío: solo el .env
+    config_url: str = ""
+    # Corto a propósito: se consulta en cada resumen
+    config_timeout_seconds: float = 2.0
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

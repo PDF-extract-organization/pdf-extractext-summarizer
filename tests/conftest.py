@@ -1,8 +1,26 @@
 """Dobles de prueba compartidos por la suite."""
 
+from dataclasses import dataclass
+
 import pytest
 
 from app.application.interfaces.ai_provider import AIProvider, AIResponse
+from app.application.interfaces.parameters_source import ParametersSource
+from app.application.parameters import SummaryParameters
+
+# Los valores del .env en los tests
+DEFAULTS = SummaryParameters(
+    model="modelo/env", max_tokens=1000, temperature=0.3, max_prompt_chars=100
+)
+
+
+@dataclass
+class Call:
+    system_prompt: str
+    user_prompt: str
+    model: str
+    max_tokens: int
+    temperature: float
 
 
 class FakeAIProvider(AIProvider):
@@ -20,16 +38,33 @@ class FakeAIProvider(AIProvider):
         self._content = content
         self._healthy = healthy
         self._error = error
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[Call] = []
 
-    async def complete(self, system_prompt: str, user_prompt: str) -> AIResponse:
-        self.calls.append((system_prompt, user_prompt))
+    async def complete(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        model: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> AIResponse:
+        self.calls.append(Call(system_prompt, user_prompt, model, max_tokens, temperature))
         if self._error:
             raise self._error
-        return AIResponse(content=self._content, model="modelo/fake", tokens_used=42)
+        return AIResponse(content=self._content, model=model, tokens_used=42)
 
     async def health_check(self) -> bool:
         return self._healthy
+
+
+class FakeParametersSource(ParametersSource):
+    """Configuración centralizada en memoria. `None` simula que no responde."""
+
+    def __init__(self, overrides: dict[str, str] | None = None):
+        self.overrides = overrides
+
+    async def get_overrides(self) -> dict[str, str] | None:
+        return self.overrides
 
 
 @pytest.fixture

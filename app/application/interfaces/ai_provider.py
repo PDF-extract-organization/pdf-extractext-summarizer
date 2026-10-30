@@ -36,8 +36,18 @@ class AIResponse:
 
 class AIProvider(ABC):
     @abstractmethod
-    async def complete(self, system_prompt: str, user_prompt: str) -> AIResponse:
-        """Envía los prompts al modelo y devuelve su respuesta."""
+    async def complete(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        model: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> AIResponse:
+        """Envía los prompts al modelo y devuelve su respuesta.
+
+        Los parámetros llegan en cada llamada: pueden cambiar entre un resumen y otro.
+        """
 
     @abstractmethod
     async def health_check(self) -> bool:

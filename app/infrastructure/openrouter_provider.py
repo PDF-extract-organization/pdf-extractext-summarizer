@@ -19,21 +19,22 @@ class OpenRouterAIProvider(AIProvider):
         self,
         api_key: str,
         base_url: str,
-        model: str,
-        max_tokens: int,
-        temperature: float,
         timeout_seconds: float,
         transport: httpx.AsyncBaseTransport | None = None,
     ):
         self._api_key = api_key
         self._base_url = base_url
-        self._model = model
-        self._max_tokens = max_tokens
-        self._temperature = temperature
         self._timeout_seconds = timeout_seconds
         self._transport = transport
 
-    async def complete(self, system_prompt: str, user_prompt: str) -> AIResponse:
+    async def complete(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        model: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> AIResponse:
         if not self._api_key.strip():
             raise MissingAPIKeyError("OPENROUTER_API_KEY no está configurada.")
 
@@ -43,13 +44,13 @@ class OpenRouterAIProvider(AIProvider):
                     f"{self._base_url}/chat/completions",
                     headers=self._headers(),
                     json={
-                        "model": self._model,
+                        "model": model,
                         "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt},
                         ],
-                        "max_tokens": self._max_tokens,
-                        "temperature": self._temperature,
+                        "max_tokens": max_tokens,
+                        "temperature": temperature,
                     },
                 )
         except httpx.TimeoutException as error:
@@ -65,7 +66,7 @@ class OpenRouterAIProvider(AIProvider):
         data = self._parse_json(response)
         return AIResponse(
             content=self._extract_content(data),
-            model=self._model,
+            model=model,
             tokens_used=(data.get("usage") or {}).get("total_tokens"),
         )
 
