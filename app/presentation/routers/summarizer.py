@@ -8,7 +8,12 @@ from app.application.interfaces.ai_provider import (
 )
 from app.application.services.summary_service import SummaryService
 from app.dependencies import get_summary_service
-from app.presentation.schemas import HealthResponse, SummarizeRequest, SummarizeResponse
+from app.presentation.schemas import (
+    HealthResponse,
+    ParametersResponse,
+    SummarizeRequest,
+    SummarizeResponse,
+)
 
 # Único sitio donde se explica cómo configurar la clave
 MISSING_API_KEY_DETAIL = (
@@ -45,3 +50,17 @@ async def summarize(
 async def health(service: SummaryService = Depends(get_summary_service)):
     status = "healthy" if await service.check_health() else "degraded"
     return HealthResponse(status=status, service="summarizer")
+
+
+@router.get("/parameters", response_model=ParametersResponse)
+async def parameters(service: SummaryService = Depends(get_summary_service)):
+    """Los parámetros que usaría ahora un resumen. Sin la API key."""
+    current = await service.current_parameters()
+    params = current.parameters
+    return ParametersResponse(
+        model=params.model,
+        max_tokens=params.max_tokens,
+        temperature=params.temperature,
+        max_prompt_chars=params.max_prompt_chars,
+        config_status=current.config_status.value,
+    )

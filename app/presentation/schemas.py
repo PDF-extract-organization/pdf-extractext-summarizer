@@ -18,3 +18,12 @@ class SummarizeResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     service: str
+
+
+class ParametersResponse(BaseModel):
+    model: str
+    max_tokens: int
+    temperature: float
+    max_prompt_chars: int
+    # ok | unavailable (config no respondió: valores del .env) | not_configured (sin CONFIG_URL)
+    config_status: str

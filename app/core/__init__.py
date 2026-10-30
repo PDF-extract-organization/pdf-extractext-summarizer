@@ -14,4 +14,9 @@ class Settings(BaseSettings):
     temperature: float = 0.3
     request_timeout_seconds: float = 60.0
 
+    # Servicio config (Consul por detrás). Vacío: solo el .env
+    config_url: str = ""
+    # Corto a propósito: se consulta en cada resumen
+    config_timeout_seconds: float = 2.0
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
