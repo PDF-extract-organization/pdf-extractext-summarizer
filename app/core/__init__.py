@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     max_prompt_chars: int = 12000
     # Los modelos de razonamiento gastan parte del límite pensando antes de responder
     max_tokens: int = 5000
+    # Máximo para el max_tokens que pide el usuario: protege la cuota de la clave del servidor
+    max_tokens_limit: int = 8000
     temperature: float = 0.3
     request_timeout_seconds: float = 60.0
 
