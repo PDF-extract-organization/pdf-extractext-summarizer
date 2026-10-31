@@ -34,4 +34,4 @@ def get_summary_service() -> SummaryService:
         if settings.config_url.strip()
         else None
     )
-    return SummaryService(provider, defaults, source)
+    return SummaryService(provider, defaults, source, settings.max_tokens_limit)

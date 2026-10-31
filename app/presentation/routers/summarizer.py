@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.application.errors import InvalidAPIKeyError, TokensOverLimitError
 from app.application.interfaces.ai_provider import (
     AIProviderError,
     AIRateLimitError,
+    AIRequestRejectedError,
     AITimeoutError,
     MissingAPIKeyError,
 )
@@ -17,8 +19,9 @@ from app.presentation.schemas import (
 
 # Único sitio donde se explica cómo configurar la clave
 MISSING_API_KEY_DETAIL = (
-    "Falta la OPENROUTER_API_KEY del servicio summarizer. Crea una gratis en "
-    "https://openrouter.ai/keys y añádela al .env como OPENROUTER_API_KEY=..."
+    "Falta la API key de OpenRouter. Añádela en la página Ajustes de la web, o en el .env "
+    "del servicio summarizer como OPENROUTER_API_KEY=... Crea una gratis en "
+    "https://openrouter.ai/keys"
 )
 
 router = APIRouter()
@@ -30,7 +33,16 @@ async def summarize(
     service: SummaryService = Depends(get_summary_service),
 ):
     try:
-        return await service.summarize(request.text)
+        return await service.summarize(
+            request.text,
+            model=request.model,
+            api_key=request.api_key,
+            max_tokens=request.max_tokens,
+        )
+    except TokensOverLimitError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except InvalidAPIKeyError as error:
+        raise HTTPException(status_code=401, detail=str(error))
     except MissingAPIKeyError:
         raise HTTPException(status_code=503, detail=MISSING_API_KEY_DETAIL)
     except AIRateLimitError as error:
@@ -42,6 +54,9 @@ async def summarize(
         )
     except AITimeoutError:
         raise HTTPException(status_code=504, detail="El modelo tardó demasiado en responder.")
+    # Antes que AIProviderError, que es su clase base
+    except AIRequestRejectedError as error:
+        raise HTTPException(status_code=400, detail=str(error))
     except AIProviderError as error:
         raise HTTPException(status_code=502, detail=f"El proveedor de IA falló: {error}")
 
@@ -54,12 +69,13 @@ async def health(service: SummaryService = Depends(get_summary_service)):
 
 @router.get("/parameters", response_model=ParametersResponse)
 async def parameters(service: SummaryService = Depends(get_summary_service)):
-    """Los parámetros que usaría ahora un resumen. Sin la API key."""
+    """Los parámetros que usaría ahora un resumen sin ajustes del usuario. Sin la API key."""
     current = await service.current_parameters()
     params = current.parameters
     return ParametersResponse(
         model=params.model,
         max_tokens=params.max_tokens,
+        max_tokens_limit=service.max_tokens_limit,
         temperature=params.temperature,
         max_prompt_chars=params.max_prompt_chars,
         config_status=current.config_status.value,
