@@ -2,6 +2,8 @@
 
 import pytest
 
+from app.application.errors import InvalidAPIKeyError, TokensOverLimitError
+from app.application.interfaces.ai_provider import AIAuthenticationError, AIProviderError
 from app.application.prompts import SYSTEM_PROMPT
 from app.application.services.summary_service import ConfigStatus, SummaryService
 from tests.conftest import DEFAULTS, FakeAIProvider, FakeParametersSource
@@ -150,3 +152,91 @@ async def test_current_parameters_no_llama_a_la_ia(fake_provider):
     await service.current_parameters()
 
     assert fake_provider.calls == []
+
+
+# --- Ajustes del usuario en la petición (#11) ---
+
+
+async def test_sin_ajustes_del_usuario_usa_la_clave_del_servidor(service, fake_provider):
+    await service.summarize("texto")
+
+    assert fake_provider.calls[0].api_key is None
+
+
+async def test_los_ajustes_de_la_peticion_ganan_a_consul_y_al_env(fake_provider):
+    source = FakeParametersSource({"model": "modelo/consul", "max_tokens": "5000"})
+    service = SummaryService(fake_provider, DEFAULTS, source)
+
+    result = await service.summarize(
+        "texto", model="modelo/usuario", api_key="sk-usuario", max_tokens=1500
+    )
+
+    call = fake_provider.calls[0]
+    assert (call.model, call.max_tokens, call.api_key) == ("modelo/usuario", 1500, "sk-usuario")
+    assert result.model == "modelo/usuario"
+
+
+async def test_un_ajuste_parcial_solo_cambia_lo_que_trae(fake_provider):
+    source = FakeParametersSource({"model": "modelo/consul", "max_tokens": "5000"})
+    service = SummaryService(fake_provider, DEFAULTS, source)
+
+    await service.summarize("texto", max_tokens=1500)
+
+    call = fake_provider.calls[0]
+    assert (call.model, call.max_tokens) == ("modelo/consul", 1500)
+
+
+async def test_max_tokens_de_la_peticion_por_encima_del_tope_se_rechaza(fake_provider):
+    service = SummaryService(fake_provider, DEFAULTS, max_tokens_limit=2000)
+
+    with pytest.raises(TokensOverLimitError) as info:
+        await service.summarize("texto", max_tokens=2001)
+
+    assert info.value.limit == 2000
+    assert fake_provider.calls == []
+
+
+async def test_max_tokens_igual_al_tope_se_acepta(fake_provider):
+    service = SummaryService(fake_provider, DEFAULTS, max_tokens_limit=2000)
+
+    await service.summarize("texto", max_tokens=2000)
+
+    assert fake_provider.calls[0].max_tokens == 2000
+
+
+async def test_el_tope_no_se_aplica_a_los_valores_del_administrador(fake_provider):
+    """Consul y el .env los pone el administrador; el tope es para lo que pida el usuario."""
+    source = FakeParametersSource({"max_tokens": "9000"})
+    service = SummaryService(fake_provider, DEFAULTS, source, max_tokens_limit=2000)
+
+    await service.summarize("texto")
+
+    assert fake_provider.calls[0].max_tokens == 9000
+
+
+async def test_max_tokens_limit_es_visible(fake_provider):
+    assert SummaryService(fake_provider, DEFAULTS, max_tokens_limit=2000).max_tokens_limit == 2000
+
+
+async def test_clave_del_usuario_rechazada_es_error_del_usuario():
+    service = SummaryService(FakeAIProvider(error=AIAuthenticationError("401")), DEFAULTS)
+
+    with pytest.raises(InvalidAPIKeyError):
+        await service.summarize("texto", api_key="sk-mala")
+
+
+async def test_clave_del_servidor_rechazada_es_error_de_configuracion():
+    service = SummaryService(FakeAIProvider(error=AIAuthenticationError("401")), DEFAULTS)
+
+    with pytest.raises(AIProviderError) as info:
+        await service.summarize("texto")
+
+    assert not isinstance(info.value, InvalidAPIKeyError)
+    assert "servidor" in str(info.value)
+
+
+@pytest.mark.parametrize("truncated", [True, False])
+async def test_indica_si_el_resumen_salio_cortado(truncated):
+    service = SummaryService(FakeAIProvider(truncated=truncated), DEFAULTS)
+
+    assert (await service.summarize("texto")).truncated is truncated
