@@ -21,6 +21,7 @@ class Call:
     model: str
     max_tokens: int
     temperature: float
+    api_key: str | None
 
 
 class FakeAIProvider(AIProvider):
@@ -34,10 +35,12 @@ class FakeAIProvider(AIProvider):
         content: str = "Resumen de prueba",
         healthy: bool = True,
         error: Exception | None = None,
+        truncated: bool = False,
     ):
         self._content = content
         self._healthy = healthy
         self._error = error
+        self._truncated = truncated
         self.calls: list[Call] = []
 
     async def complete(
@@ -47,11 +50,16 @@ class FakeAIProvider(AIProvider):
         model: str,
         max_tokens: int,
         temperature: float,
+        api_key: str | None = None,
     ) -> AIResponse:
-        self.calls.append(Call(system_prompt, user_prompt, model, max_tokens, temperature))
+        self.calls.append(
+            Call(system_prompt, user_prompt, model, max_tokens, temperature, api_key)
+        )
         if self._error:
             raise self._error
-        return AIResponse(content=self._content, model=model, tokens_used=42)
+        return AIResponse(
+            content=self._content, model=model, tokens_used=42, truncated=self._truncated
+        )
 
     async def health_check(self) -> bool:
         return self._healthy

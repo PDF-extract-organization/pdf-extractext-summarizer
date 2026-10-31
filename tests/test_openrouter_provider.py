@@ -9,8 +9,11 @@ import httpx
 import pytest
 
 from app.application.interfaces.ai_provider import (
+    AIAuthenticationError,
+    AIOutOfTokensError,
     AIProviderError,
     AIRateLimitError,
+    AIRequestRejectedError,
     AITimeoutError,
     MissingAPIKeyError,
 )
@@ -41,24 +44,102 @@ async def complete(provider: OpenRouterAIProvider, system="s", user="u", **param
     return await provider.complete(system, user, **params)
 
 
-def ok(content="Un resumen", tokens=123):
+def ok(content="Un resumen", tokens=123, finish_reason=None):
     def handler(request):
+        choice = {"message": {"content": content}}
+        if finish_reason:
+            choice["finish_reason"] = finish_reason
         return httpx.Response(
-            200,
-            json={
-                "choices": [{"message": {"content": content}}],
-                "usage": {"total_tokens": tokens},
-            },
+            200, json={"choices": [choice], "usage": {"total_tokens": tokens}}
         )
 
     return handler
 
 
-def status(code, headers=None):
+def status(code, headers=None, message="x"):
     def handler(request):
-        return httpx.Response(code, json={"error": {"message": "x"}}, headers=headers)
+        return httpx.Response(code, json={"error": {"message": message}}, headers=headers)
 
     return handler
+
+
+# --- La clave de cada llamada (#11) ---
+
+
+async def test_usa_la_clave_de_la_llamada_si_llega():
+    requests = []
+
+    await complete(build(ok(), requests=requests), api_key="sk-usuario")
+
+    assert requests[0].headers["Authorization"] == "Bearer sk-usuario"
+
+
+async def test_sin_clave_en_la_llamada_usa_la_del_servidor():
+    requests = []
+
+    await complete(build(ok(), requests=requests), api_key=None)
+
+    assert requests[0].headers["Authorization"] == "Bearer sk-or-test"
+
+
+async def test_la_clave_de_la_llamada_basta_aunque_el_servidor_no_tenga():
+    requests = []
+
+    await complete(build(ok(), api_key="", requests=requests), api_key="sk-usuario")
+
+    assert requests[0].headers["Authorization"] == "Bearer sk-usuario"
+
+
+@pytest.mark.parametrize("api_key", ["", "   "])
+async def test_una_clave_vacia_en_la_llamada_cuenta_como_ninguna(api_key):
+    requests = []
+
+    await complete(build(ok(), requests=requests), api_key=api_key)
+
+    assert requests[0].headers["Authorization"] == "Bearer sk-or-test"
+
+
+# --- Errores que provoca la petición (#11) ---
+
+
+async def test_un_401_lanza_authentication_error_sin_la_clave_en_el_mensaje():
+    with pytest.raises(AIAuthenticationError) as info:
+        await complete(build(status(401, message="User not found.")), api_key="sk-secreta")
+
+    assert "sk-secreta" not in str(info.value)
+
+
+@pytest.mark.parametrize("code", [400, 404])
+async def test_una_peticion_rechazada_lanza_request_rejected_con_el_motivo(code):
+    handler = status(code, message="nvidia/no-existe is not a valid model ID")
+
+    with pytest.raises(AIRequestRejectedError, match="not a valid model ID"):
+        await complete(build(handler))
+
+
+async def test_los_errores_nuevos_siguen_siendo_ai_provider_error():
+    """Quien solo captura AIProviderError sigue funcionando igual."""
+    for error in (AIAuthenticationError, AIRequestRejectedError, AIOutOfTokensError):
+        assert issubclass(error, AIProviderError)
+
+
+# --- Resúmenes cortados o vacíos (#2) ---
+
+
+@pytest.mark.parametrize("finish_reason, truncated", [("stop", False), (None, False), ("length", True)])
+async def test_indica_si_la_respuesta_se_corto_por_tokens(finish_reason, truncated):
+    result = await complete(build(ok(finish_reason=finish_reason)))
+
+    assert result.truncated is truncated
+
+
+async def test_sin_texto_por_agotar_los_tokens_lanza_out_of_tokens():
+    handler = ok(content=None, finish_reason="length")
+
+    with pytest.raises(AIOutOfTokensError) as info:
+        await complete(build(handler), max_tokens=1024)
+
+    assert "1024" in str(info.value)
 
 
 # --- complete ---
