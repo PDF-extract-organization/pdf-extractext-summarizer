@@ -89,10 +89,11 @@ class OpenRouterAIProvider(AIProvider):
     async def health_check(self) -> bool:
         if not self._api_key.strip():
             return False
+        # /key y no /models: /models responde 200 aunque la clave no valga (#4)
         try:
             async with self._client(HEALTH_TIMEOUT_SECONDS) as client:
                 response = await client.get(
-                    f"{self._base_url}/models", headers=self._headers(self._api_key)
+                    f"{self._base_url}/key", headers=self._headers(self._api_key)
                 )
         except httpx.HTTPError:
             return False

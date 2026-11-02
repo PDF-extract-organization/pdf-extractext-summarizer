@@ -272,17 +272,23 @@ async def test_health_es_false_sin_api_key():
     assert requests == []
 
 
-async def test_health_es_true_si_models_responde_200():
+async def test_health_es_true_si_key_acepta_la_clave():
     requests = []
 
     def handler(request):
-        return httpx.Response(200, json={"data": []})
+        return httpx.Response(200, json={"data": {}})
 
     assert await build(handler, requests=requests).health_check() is True
-    assert str(requests[0].url) == f"{BASE_URL}/models"
+    # /models responde 200 aunque la clave no valga; /key sí la comprueba (#4)
+    assert str(requests[0].url) == f"{BASE_URL}/key"
+    assert requests[0].headers["Authorization"] == "Bearer sk-or-test"
 
 
-async def test_health_es_false_si_models_falla():
+async def test_health_es_false_si_la_clave_es_invalida():
+    assert await build(status(401)).health_check() is False
+
+
+async def test_health_es_false_si_key_falla():
     assert await build(status(503)).health_check() is False
 
 
