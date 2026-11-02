@@ -31,6 +31,17 @@ async def test_health_check_real():
     assert await provider().health_check() is True
 
 
+async def test_health_check_real_con_clave_invalida():
+    """/models aceptaba cualquier clave; /key la rechaza con 401 (#4)."""
+    invalid = OpenRouterAIProvider(
+        api_key="sk-or-invalida",
+        base_url=settings.openrouter_api_url,
+        timeout_seconds=settings.request_timeout_seconds,
+    )
+
+    assert await invalid.health_check() is False
+
+
 async def test_completion_real_devuelve_texto():
     result = await provider().complete(
         "Responde solo con la palabra pedida.",
