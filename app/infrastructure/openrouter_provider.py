@@ -1,5 +1,7 @@
 """Adaptador del puerto AIProvider para OpenRouter (API compatible con la de OpenAI)."""
 
+import asyncio
+
 import httpx
 
 from app.application.interfaces.ai_provider import (
@@ -14,7 +16,8 @@ from app.application.interfaces.ai_provider import (
     MissingAPIKeyError,
 )
 
-HEALTH_TIMEOUT_SECONDS = 3.0
+# Tope total del health, no por fase de httpx: web espera 2 s a /health (#20)
+HEALTH_TIMEOUT_SECONDS = 1.5
 
 
 class OpenRouterAIProvider(AIProvider):
@@ -24,11 +27,13 @@ class OpenRouterAIProvider(AIProvider):
         base_url: str,
         timeout_seconds: float,
         transport: httpx.AsyncBaseTransport | None = None,
+        health_timeout_seconds: float = HEALTH_TIMEOUT_SECONDS,
     ):
         self._api_key = api_key
         self._base_url = base_url
         self._timeout_seconds = timeout_seconds
         self._transport = transport
+        self._health_timeout_seconds = health_timeout_seconds
 
     async def complete(
         self,
@@ -91,11 +96,13 @@ class OpenRouterAIProvider(AIProvider):
             return False
         # /key y no /models: /models responde 200 aunque la clave no valga (#4)
         try:
-            async with self._client(HEALTH_TIMEOUT_SECONDS) as client:
-                response = await client.get(
-                    f"{self._base_url}/key", headers=self._headers(self._api_key)
-                )
-        except httpx.HTTPError:
+            # El timeout de httpx es por fase (conexión, lectura…); asyncio.timeout, el total
+            async with asyncio.timeout(self._health_timeout_seconds):
+                async with self._client(self._health_timeout_seconds) as client:
+                    response = await client.get(
+                        f"{self._base_url}/key", headers=self._headers(self._api_key)
+                    )
+        except (httpx.HTTPError, TimeoutError):
             return False
         return response.status_code == 200
 

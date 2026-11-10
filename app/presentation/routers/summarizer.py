@@ -67,6 +67,12 @@ async def health(service: SummaryService = Depends(get_summary_service)):
     return HealthResponse(status=status, service="summarizer")
 
 
+@router.get("/live", response_model=HealthResponse)
+async def live():
+    """Solo indica que el proceso está vivo, sin mirar OpenRouter: lo usa el HEALTHCHECK (#20)."""
+    return HealthResponse(status="alive", service="summarizer")
+
+
 @router.get("/parameters", response_model=ParametersResponse)
 async def parameters(service: SummaryService = Depends(get_summary_service)):
     """Los parámetros que usaría ahora un resumen sin ajustes del usuario. Sin la API key."""

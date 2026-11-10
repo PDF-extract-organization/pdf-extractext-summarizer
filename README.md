@@ -18,6 +18,7 @@ Escucha en el puerto `8000`. En el stack completo, Traefik le quita el prefijo
 | `POST /summarize` | JSON `{"text", "model"?, "api_key"?, "max_tokens"?}` | `200` `{"summary", "model", "tokens_used", "truncated"}` |
 | `GET /parameters` | — | `200` `{"model", "max_tokens", "max_tokens_limit", "temperature", "max_prompt_chars", "config_status"}` |
 | `GET /health` | — | `200` `{"status": "healthy" \| "degraded", "service": "summarizer"}` |
+| `GET /live` | — | `200` `{"status": "alive", "service": "summarizer"}` |
 
 - `model`, `api_key` y `max_tokens` son los **ajustes del usuario**: valen solo para esa
   petición, no se guardan y ganan a los valores del servidor (ver "Parámetros").
@@ -29,9 +30,14 @@ Escucha en el puerto `8000`. En el stack completo, Traefik le quita el prefijo
   nunca la API key. `config_status` es `ok`, `unavailable` (config no respondió:
   valores del `.env`) o `not_configured` (sin `CONFIG_URL`).
 
-`/health` responde `degraded` si no hay API key o si `GET {OPENROUTER_API_URL}/models`
-falla en menos de 3 segundos. Siempre devuelve `200`: el proceso está vivo aunque el
-proveedor no.
+`/health` responde `degraded` si no hay API key, si `GET {OPENROUTER_API_URL}/key` la
+rechaza (`/models` no sirve: responde `200` aunque la clave no valga, #4) o si
+OpenRouter no contesta en **1,5 segundos en total**, por debajo de los 2 s que espera
+web. Siempre devuelve `200`: el proceso está vivo aunque el proveedor no.
+
+`/live` solo indica que el proceso está vivo y no consulta OpenRouter. Es el que usa el
+`HEALTHCHECK` de la imagen: así una caída de OpenRouter no deja el contenedor
+`unhealthy` ni impide arrancar los servicios que dependen de él (#20).
 
 ### Errores
 
@@ -139,7 +145,7 @@ En Windows, si el texto lleva acentos, envíalo desde un archivo en UTF-8
 (`--data-binary @cuerpo.json`): la terminal puede mandarlo en otra codificación y el
 servicio responde `400`.
 
-La imagen corre con un usuario sin privilegios y declara un `HEALTHCHECK`. Al integrar
+La imagen corre con un usuario sin privilegios y declara un `HEALTHCHECK` sobre `/live`. Al integrar
 en `main`, la CI la publica en `ghcr.io/pdf-extract-organization/pdf-extractext-summarizer`.
 
 ## Arquitectura
