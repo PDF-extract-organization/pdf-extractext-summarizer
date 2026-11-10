@@ -116,6 +116,14 @@ def test_health_degraded_si_el_proveedor_no_responde():
     assert response.json() == {"status": "degraded", "service": "summarizer"}
 
 
+def test_live_responde_aunque_el_proveedor_no_responda():
+    # El HEALTHCHECK de Docker usa /live: una caída de OpenRouter no tumba el contenedor (#20)
+    response = client_con(FakeAIProvider(healthy=False)).get("/live")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "alive", "service": "summarizer"}
+
+
 # --- GET /parameters ---
 
 
