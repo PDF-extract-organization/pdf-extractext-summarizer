@@ -3,7 +3,9 @@
 No hacen peticiones reales: el adaptador recibe un transporte de httpx simulado.
 """
 
+import asyncio
 import json
+import time
 
 import httpx
 import pytest
@@ -17,7 +19,7 @@ from app.application.interfaces.ai_provider import (
     AITimeoutError,
     MissingAPIKeyError,
 )
-from app.infrastructure.openrouter_provider import OpenRouterAIProvider
+from app.infrastructure.openrouter_provider import HEALTH_TIMEOUT_SECONDS, OpenRouterAIProvider
 
 BASE_URL = "https://openrouter.test/api/v1"
 
@@ -297,3 +299,27 @@ async def test_health_es_false_si_no_se_puede_conectar():
         raise httpx.ConnectError("sin red", request=request)
 
     assert await build(handler).health_check() is False
+
+
+def test_el_health_espera_menos_que_web():
+    # web espera 2 s a /health: si tarda más, lo da por caído sin oír "degraded" (#20)
+    assert HEALTH_TIMEOUT_SECONDS < 2
+
+
+async def test_health_es_false_si_openrouter_tarda_mas_del_tiempo_total():
+    # Ninguna fase de httpx vence (el transporte simulado no las aplica): solo el tope total
+    async def handler(request):
+        await asyncio.sleep(1)
+        return httpx.Response(200, json={"data": {}})
+
+    provider = OpenRouterAIProvider(
+        api_key="sk-or-test",
+        base_url=BASE_URL,
+        timeout_seconds=60,
+        transport=httpx.MockTransport(handler),
+        health_timeout_seconds=0.05,
+    )
+
+    started = time.monotonic()
+    assert await provider.health_check() is False
+    assert time.monotonic() - started < 0.5
